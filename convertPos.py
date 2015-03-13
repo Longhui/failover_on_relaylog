@@ -1,5 +1,15 @@
-import re
-import os
+#-*-coding:utf8-*-
+__author__='raolh'
+
+import re, os
+from optparse import OptionParser
+
+
+regex_rotate=re.compile(r'Rotate\sto\s([\w\-\.]+)\s*pos:\s*(\d+)')    
+regex_binlog_pos=re.compile(r'server\sid\s\d+\s*end_log_pos\s(\d+)')
+regex_relaylog_pos=re.compile(r'#\sat\s(\d+)$')
+MYSQLBINLOG="mysqlbinlog"
+
 
 class relaylog_index():
   """
@@ -14,11 +24,6 @@ class relaylog_index():
 
   def __del__(self):
     self.handler.close()
-
-regex_rotate=re.compile(r'Rotate\sto\s([\w\-\.]+)\s*pos:\s*(\d+)')    
-regex_binlog_pos=re.compile(r'server\sid\s\d+\s*end_log_pos\s(\d+)')
-regex_relaylog_pos=re.compile(r'#\sat\s(\d+)$')
-MYSQLBINLOG="mysqlbinlog"
 
 class relay_log():
   """
@@ -114,5 +119,53 @@ def convert_pos(relaylog_index_name, binlog_filename, binlog_pos, mysqlbinlog=No
   else:
     raise Exception("%s is not exists"%(relaylog_index,))
 
+
+def ParseOptions():
+  parser=OptionParser()
+  parser.add_option("-B","--mysqlbinlog",
+                    dest="mysqlbinlog",
+                    default="/usr/local/mysql/bin/mysqlbinlog",
+                    help='mysqlbinlog full path')
+  parser.add_option("-R","--relaylog_index",
+                    dest="relaylog_index",
+                    default=" ",
+                    help='relaylog index file path')
+  parser.add_option("-F","--master_file_name",
+                    dest="master_binlog_file_name",
+                    default="",
+                    help='master binlog file name need to convert')
+
+  parser.add_option("-P","--master_file_pos",
+                    dest="master_binlog_file_pos",
+                    default="",
+                    help='master binlog file pos need to convert')
+  (options, args)=parser.parse_args()
+  try:
+    if options.mysqlbinlog:
+      MYSQLBINLOG=options.mysqlbinlog
+    else:
+      raise Exception()
+    if options.relaylog_index:
+      RELAYLOG_INDEX=options.relaylog_index
+    else:
+      raise Exception()
+    if options.master_binlog_file_pos:
+      MASTERFILEPOS=options.master_binlog_file_pos
+    else:
+      raise Exception()
+    if options.master_binlog_file_name:
+      MASTERFILENAME=options.master_binlog_file_name
+    else:
+      raise Exception()
+  except Exception,e:
+    print e
+    print 'python convetPos.py --help'
+    return
+  (filename, pos)= convert_pos(RELAYLOG_INDEX, MASTERFILENAME, MASTERFILEPOS, mysqlbinlog=MYSQLBINLOG)
+  print '\n'
+  print filename
+  print pos
+  print '\n'
+
 if __name__ == "__main__":
-  print convert_pos('node2/my-relay.index','my-bin.000006','189312290', mysqlbinlog="/styx/home/hzraolh/work/5.5.30-v5-relaylog_failover/mysql/bin/mysqlbinlog")
+  ParseOptions()

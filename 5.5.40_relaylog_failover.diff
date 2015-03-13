@@ -1,0 +1,86 @@
+diff --git a/mysql-5.5.40/sql/log.cc b/mysql-5.5.40/sql/log.cc
+index d322abc..caf0d99 100644
+--- a/mysql-5.5.40/sql/log.cc
++++ b/mysql-5.5.40/sql/log.cc
+@@ -4406,6 +4406,14 @@ err:
+ }
+ 
+ 
++bool MYSQL_BIN_LOG::append_rotate_event(Master_info* mi)
++{
++       Rotate_log_event rev(mi->master_log_name,0,mi->master_log_pos,0);
++       rev.server_id= mi->master_id;
++       rev.write(get_log_file());
++       return 0;
++}
++
+ bool MYSQL_BIN_LOG::appendv(const char* buf, uint len,...)
+ {
+   bool error= 0;
+@@ -4428,8 +4436,14 @@ bool MYSQL_BIN_LOG::appendv(const char* buf, uint len,...)
+   DBUG_PRINT("info",("max_size: %lu",max_size));
+   if (flush_and_sync(0))
+     goto err;
+-  if ((uint) my_b_append_tell(&log_file) > max_size)
+-    error= new_file_without_locking();
++   if ((uint) my_b_append_tell(&log_file) > max_size)
++  {
++     error= new_file_without_locking();
++    if (!error && is_relay_log)
++    {
++      append_rotate_event(active_mi);
++    }
++  }
+ err:
+   if (!error)
+     signal_update();
+diff --git a/mysql-5.5.40/sql/log.h b/mysql-5.5.40/sql/log.h
+index 1fc13af..4c130b8 100644
+--- a/mysql-5.5.40/sql/log.h
++++ b/mysql-5.5.40/sql/log.h
+@@ -146,6 +146,7 @@ extern TC_LOG_DUMMY tc_log_dummy;
+ #define LOG_WARN_UNIQUE_FN_EXT_LEFT 1000
+ 
+ class Relay_log_info;
++class Master_info;
+ 
+ #ifdef HAVE_PSI_INTERFACE
+ extern PSI_mutex_key key_LOG_INFO_lock;
+@@ -450,6 +451,8 @@ public:
+   void stop_union_events(THD *thd);
+   bool is_query_in_union(THD *thd, query_id_t query_id_param);
+ 
++  bool append_rotate_event(Master_info* mi);
++
+   /*
+     v stands for vector
+     invoked as appendv(buf1,len1,buf2,len2,...,bufn,lenn,0)
+diff --git a/mysql-5.5.40/sql/slave.cc b/mysql-5.5.40/sql/slave.cc
+index 23460c1..344eece 100644
+--- a/mysql-5.5.40/sql/slave.cc
++++ b/mysql-5.5.40/sql/slave.cc
+@@ -4133,14 +4133,15 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
+   else
+   {
+     /* write the event to the relay log */
++    mi->master_log_pos+= inc_pos;
+     if (likely(!(rli->relay_log.appendv(buf,event_len,0))))
+     {
+-      mi->master_log_pos+= inc_pos;
+       DBUG_PRINT("info", ("master_log_pos: %lu", (ulong) mi->master_log_pos));
+       rli->relay_log.harvest_bytes_written(&rli->log_space_total);
+     }
+     else
+     {
++      mi->master_log_pos-= inc_pos;
+       error= ER_SLAVE_RELAY_LOG_WRITE_FAILURE;
+     }
+     rli->ign_master_log_name_end[0]= 0; // last event is not ignored
+@@ -5013,6 +5014,7 @@ int rotate_relay_log(Master_info* mi)
+   if ((error= rli->relay_log.new_file()))
+     goto end;
+ 
++  rli->relay_log.append_rotate_event(mi);
+   /*
+     We harvest now, because otherwise BIN_LOG_HEADER_SIZE will not immediately
+     be counted, so imagine a succession of FLUSH LOGS  and assume the slave

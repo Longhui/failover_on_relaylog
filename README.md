@@ -1,1 +1,2 @@
-# failover_on_relaylog
+
+python convertPos.py --help
