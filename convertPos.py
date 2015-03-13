@@ -19,8 +19,12 @@ class relaylog_index():
     self.handler= open(index_file, 'r')
 
   def find_next_one(self):
-    self.relaylog=self.handler.readline().split('/')[1]
-    return self.relaylog.strip()
+    line= self.handler.readline()
+    if len(line) > 0:
+      self.relaylog=line.split('/')[1].strip()
+      return self.relaylog
+    else:
+      return None
 
   def __del__(self):
     self.handler.close()
@@ -64,12 +68,12 @@ class relay_log():
       while line:
         match= regex_relaylog_pos.search(line)
         if match:
-          relaylog_pos=match.group(1)
+          relaylog_pos=long(match.group(1))
           if stop:
             break
         match= regex_binlog_pos.search(line)
         if match:
-          position=match.group(1)
+          position=long(match.group(1))
           if binlog_pos == position:
             stop = 1
           if long(binlog_pos) < long(position):
@@ -87,13 +91,14 @@ def convert_pos(relaylog_index_name, binlog_filename, binlog_pos, mysqlbinlog=No
   if mysqlbinlog:
     MYSQLBINLOG= mysqlbinlog
 
+  binlog_pos= long(binlog_pos)
   if os.path.exists(relaylog_index_name):
     prev_relaylog=None; cur_relaylog=None
     relaylog_pos=None; relaylog_filename=None
     dirname= os.path.dirname(relaylog_index_name)
     index= relaylog_index(relaylog_index_name)
     relaylog_filename=index.find_next_one()
-    while relaylog_filename:
+    while None == relaylog_filename:
       cur_relaylog=relay_log(dirname+'/'+relaylog_filename)
       cur_binlog_filename= cur_relaylog.binlog_file()
       cur_binlog_pos= cur_relaylog.min_binlog_pos()
@@ -101,20 +106,18 @@ def convert_pos(relaylog_index_name, binlog_filename, binlog_pos, mysqlbinlog=No
         if cur_binlog_pos < binlog_pos:
           prev_relaylog= cur_relaylog
         elif cur_binlog_pos > binlog_pos:
-          if prev_relaylog:
-            relaylog_pos=prev_relaylog.get_relay_pos(binlog_pos)
-            relaylog_filename=prev_relaylog.filename
-            break
+          break
         else:
           relaylog_pos=cur_relaylog.get_relay_pos(binlog_pos)
           relaylog_filename=cur_relaylog.filename
           break
       elif int(cur_binlog_filename.split('.')[1]) > int(binlog_filename.split('.')[1]):
-        if prev_relaylog:
-          relaylog_pos=prev_relaylog.get_relay_pos(binlog_pos)
-          relaylog_filename=prev_relaylog.filename
         break         
       relaylog_filename=index.find_next_one()
+    if prev_relaylog:
+      relaylog_pos=prev_relaylog.get_relay_pos(binlog_pos)
+      relaylog_filename=prev_relaylog.filename
+
     return relaylog_filename, relaylog_pos
   else:
     raise Exception("%s is not exists"%(relaylog_index,))
