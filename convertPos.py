@@ -68,12 +68,12 @@ class relay_log():
       while line:
         match= regex_relaylog_pos.search(line)
         if match:
-          relaylog_pos=long(match.group(1))
+          relaylog_pos=match.group(1)
           if stop:
             break
         match= regex_binlog_pos.search(line)
         if match:
-          position=long(match.group(1))
+          position=match.group(1)
           if binlog_pos == position:
             stop = 1
           if long(binlog_pos) < long(position):
@@ -91,21 +91,21 @@ def convert_pos(relaylog_index_name, binlog_filename, binlog_pos, mysqlbinlog=No
   if mysqlbinlog:
     MYSQLBINLOG= mysqlbinlog
 
-  binlog_pos= long(binlog_pos)
+  binlog_pos= binlog_pos
   if os.path.exists(relaylog_index_name):
     prev_relaylog=None; cur_relaylog=None
     relaylog_pos=None; relaylog_filename=None
     dirname= os.path.dirname(relaylog_index_name)
     index= relaylog_index(relaylog_index_name)
     relaylog_filename=index.find_next_one()
-    while None == relaylog_filename:
+    while None != relaylog_filename:
       cur_relaylog=relay_log(dirname+'/'+relaylog_filename)
       cur_binlog_filename= cur_relaylog.binlog_file()
       cur_binlog_pos= cur_relaylog.min_binlog_pos()
       if cur_binlog_filename == binlog_filename:
-        if cur_binlog_pos < binlog_pos:
+        if long(cur_binlog_pos) < long(binlog_pos):
           prev_relaylog= cur_relaylog
-        elif cur_binlog_pos > binlog_pos:
+        elif long(cur_binlog_pos) > long(binlog_pos):
           break
         else:
           relaylog_pos=cur_relaylog.get_relay_pos(binlog_pos)
@@ -115,8 +115,8 @@ def convert_pos(relaylog_index_name, binlog_filename, binlog_pos, mysqlbinlog=No
         break         
       relaylog_filename=index.find_next_one()
     if prev_relaylog:
-      relaylog_pos=prev_relaylog.get_relay_pos(binlog_pos)
       relaylog_filename=prev_relaylog.filename
+      relaylog_pos=prev_relaylog.get_relay_pos(binlog_pos)
 
     return relaylog_filename, relaylog_pos
   else:
